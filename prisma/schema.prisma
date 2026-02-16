@@ -1,0 +1,39 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum TaskStatus {
+  Pending
+  Processing
+  Completed
+  Failed
+  NeedAuth
+}
+
+model User {
+  id            String   @id
+  platform      String
+  cookie        String
+  lastLoginTime DateTime
+  tasks         Task[]
+}
+
+model Task {
+  id                  String     @id
+  ownerId             String
+  status              TaskStatus
+  progress            Int
+  resultUrl           String?
+  errorMessage        String?
+  configJson          String
+  actualTotalDuration Int?
+  distributionJson    String?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  owner               User       @relation(fields: [ownerId], references: [id])
+}

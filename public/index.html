@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>时间均衡歌单混音器</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>时间均衡歌单混音器</h1>
+      <form id="mix-form" class="card">
+        <label class="field">
+          <span>网易云 Cookie</span>
+          <textarea id="cookie" rows="4" required></textarea>
+        </label>
+        <label class="field">
+          <span>源歌单链接（2-10 个，每行一个）</span>
+          <textarea id="sources" rows="6" required></textarea>
+        </label>
+        <label class="field">
+          <span>目标总时长（分钟）</span>
+          <input id="duration" type="number" min="1" value="180" required />
+        </label>
+        <button type="submit">开始生成</button>
+      </form>
+      <section id="status" class="card status">
+        <h2>任务状态</h2>
+        <div id="status-text">未开始</div>
+        <div id="progress-text"></div>
+        <div id="result-link"></div>
+        <div id="distribution"></div>
+        <div id="error-text"></div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
