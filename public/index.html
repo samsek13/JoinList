@@ -14,9 +14,20 @@
           <span>网易云 Cookie</span>
           <textarea id="cookie" rows="4" required></textarea>
         </label>
+        <div class="qr-section">
+          <div class="qr-actions">
+            <button type="button" id="qr-button">扫码登录获取 Cookie</button>
+            <span id="qr-status"></span>
+          </div>
+          <img id="qr-image" alt="网易云登录二维码" />
+        </div>
         <label class="field">
           <span>源歌单链接（2-10 个，每行一个）</span>
           <textarea id="sources" rows="6" required></textarea>
+        </label>
+        <label class="field">
+          <span>混合百分比（可选，每行一个，对应歌单顺序；留空则平分剩余）</span>
+          <textarea id="weights" rows="4"></textarea>
         </label>
         <label class="field">
           <span>目标总时长（分钟）</span>

@@ -31,6 +31,31 @@ h1 {
   margin-bottom: 16px;
 }
 
+.qr-section {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.qr-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#qr-image {
+  width: 180px;
+  height: 180px;
+  border: 1px solid #d8dbe6;
+  border-radius: 8px;
+  display: none;
+}
+
+#qr-status {
+  font-size: 13px;
+  color: #5b6275;
+}
+
 textarea,
 input {
   font-size: 14px;
