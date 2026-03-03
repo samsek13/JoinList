@@ -18,10 +18,13 @@ try {
     # Create .env if missing (Default to Simple Mode)
     if (-not (Test-Path "$projectRoot\.env")) {
         Write-Host "Creating default .env configuration (Simple Mode)..." -ForegroundColor Yellow
+        $secret = [guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N")
         $envContent = @"
 DATABASE_URL="file:./dev.db"
 QUEUE_MODE="memory"
 PORT=3000
+COOKIE_SECRET="$secret"
+FORCE_HTTPS=false
 "@
         Set-Content -Path "$projectRoot\.env" -Value $envContent
     }

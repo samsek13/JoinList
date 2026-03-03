@@ -45,6 +45,7 @@ export type MixConfig = {
   maxTotalDuration: number; // 用户设定的目标总时长 (秒)
   sourceUrls: string[];     // 用户输入的源歌单链接列表
   cookie: string;           // 用户的登录 Cookie
+  weights?: (number | null)[];
 };
 
 /**

@@ -13,6 +13,75 @@ body {
   gap: 24px;
 }
 
+.hidden {
+  display: none !important;
+}
+
+/* Auth Page */
+.auth-container {
+  max-width: 400px;
+  margin: 60px auto;
+  text-align: center;
+}
+
+.auth-container h1 {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  color: #5b6275;
+  margin-bottom: 24px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  justify-content: center;
+}
+
+.tab {
+  background: transparent;
+  color: #5b6275;
+  border: 1px solid #d8dbe6;
+  padding: 10px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab.active {
+  background: #4c6fff;
+  color: #ffffff;
+  border-color: #4c6fff;
+}
+
+.auth-form {
+  text-align: left;
+}
+
+/* App Header */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.user-menu {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#username-display {
+  color: #5b6275;
+  font-size: 14px;
+}
+
+/* Card */
 .card {
   background: #ffffff;
   border-radius: 16px;
@@ -20,17 +89,49 @@ body {
   box-shadow: 0 10px 30px rgba(24, 32, 56, 0.08);
 }
 
-h1 {
-  margin: 0;
-  font-size: 28px;
+.card h2 {
+  margin: 0 0 16px;
+  font-size: 18px;
 }
 
+/* Fields */
 .field {
   display: grid;
   gap: 8px;
   margin-bottom: 16px;
 }
 
+.field label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.hint {
+  font-size: 13px;
+  color: #5b6275;
+  margin-top: -8px;
+  margin-bottom: 12px;
+}
+
+/* Status Row */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+#netease-bound-status {
+  font-size: 14px;
+  color: #5b6275;
+}
+
+#netease-bound-status.bound {
+  color: #22c55e;
+  font-weight: 500;
+}
+
+/* QR Section */
 .qr-section {
   display: grid;
   gap: 12px;
@@ -41,6 +142,7 @@ h1 {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 #qr-image {
@@ -56,12 +158,41 @@ h1 {
   color: #5b6275;
 }
 
+/* Cookie Manual */
+.cookie-manual {
+  margin-bottom: 16px;
+}
+
+.cookie-manual details {
+  font-size: 14px;
+}
+
+.cookie-manual summary {
+  cursor: pointer;
+  color: #5b6275;
+  margin-bottom: 8px;
+}
+
+.cookie-manual textarea {
+  margin: 8px 0;
+}
+
+/* Form Elements */
 textarea,
 input {
   font-size: 14px;
   padding: 10px 12px;
   border-radius: 8px;
   border: 1px solid #d8dbe6;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+textarea:focus,
+input:focus {
+  outline: none;
+  border-color: #4c6fff;
 }
 
 button {
@@ -72,8 +203,29 @@ button {
   border-radius: 10px;
   font-size: 15px;
   cursor: pointer;
+  transition: background 0.2s;
 }
 
+button:hover {
+  background: #3a5de8;
+}
+
+button.secondary {
+  background: transparent;
+  color: #5b6275;
+  border: 1px solid #d8dbe6;
+}
+
+button.secondary:hover {
+  background: #f0f1f5;
+}
+
+button.small {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+/* Status */
 .status {
   display: grid;
   gap: 8px;
@@ -90,6 +242,107 @@ button {
   font-size: 14px;
 }
 
-#error-text {
+.error-text {
   color: #d64545;
+  font-size: 14px;
 }
+
+/* Tasks List */
+#tasks-list {
+  display: grid;
+  gap: 12px;
+}
+
+.task-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #f6f7fb;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.task-item .task-info {
+  display: grid;
+  gap: 4px;
+}
+
+.task-item .task-status {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.task-status.Completed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.task-status.Failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.task-status.Processing {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.task-status.Pending {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.task-status.NeedAuth {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .container {
+    margin: 20px auto;
+  }
+
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .auth-container {
+    margin: 40px auto;
+  }
+}
+
+/* >>> 修改开始：动态歌单行样式 */
+.source-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.source-row input[type="text"] {
+  flex: 2;
+  min-width: 0;
+}
+
+.source-row input[type="number"] {
+  flex: 0.5;
+  min-width: 60px;
+}
+
+.source-row .remove-btn {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  background: transparent;
+  color: #d64545;
+  border: 1px solid #d64545;
+}
+
+.source-row .remove-btn:hover {
+  background: #fee2e2;
+}
+/* >>> 修改结束 */

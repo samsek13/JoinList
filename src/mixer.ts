@@ -12,7 +12,8 @@ import { shuffle } from "./utils";
  */
 export const mixTrackPools = (
   pools: TrackPool[],
-  maxTotalDuration: number
+  maxTotalDuration: number,
+  weights?: number[]
 ): MixResult => {
   const poolCount = pools.length; // 源歌单的数量
   
@@ -28,23 +29,34 @@ export const mixTrackPools = (
   // 根据“木桶效应”，为了公平，大家的配额必须看那个“最短的歌单”。
   // 如果歌单 A 只有 5 分钟，那所有歌单都只能出 5 分钟。
   const tTarget = Math.min(initialTarget, ...poolDurations);
+  const useWeighted = Boolean(weights && weights.length === poolCount);
+  const targets = useWeighted
+    ? weights!.map((weight, index) =>
+        Math.min(
+          poolDurations[index],
+          Math.floor((maxTotalDuration * weight) / 100)
+        )
+      )
+    : pools.map(() => tTarget);
   
   const distribution = []; // 用于存放统计数据
   const trackIds: number[] = []; // 用于存放最终选中的歌曲 ID
   let actualTotalDuration = 0; // 记录实际凑出来的总时长
 
   // 步骤 4：开始对每个歌单进行抽取
-  for (const pool of pools) {
+  for (let index = 0; index < pools.length; index += 1) {
+    const pool = pools[index];
     // 4.1 洗牌：先把歌单里的歌打乱，保证随机性
     const shuffled = shuffle(pool.tracks);
     
     let currentDuration = 0; // 当前歌单已选的时长
+    const target = targets[index];
     const selectedIds: number[] = []; // 当前歌单已选的 ID
     
     // 4.2 贪心算法：按顺序一首首加，直到快溢出 tTarget
     for (const track of shuffled) {
       // 如果加上这首歌会超过目标时长，就跳过这首，看下一首
-      if (currentDuration + track.duration > tTarget) {
+      if (currentDuration + track.duration > target) {
         continue;
       }
       // 没超过，那就加上

@@ -3,38 +3,118 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>时间均衡歌单混音器</title>
+    <title>JoinList - 时间均衡歌单混音器</title>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#4c6fff" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="JoinList" />
   </head>
   <body>
-    <main class="container">
-      <h1>时间均衡歌单混音器</h1>
-      <form id="mix-form" class="card">
-        <label class="field">
-          <span>网易云 Cookie</span>
-          <textarea id="cookie" rows="4" required></textarea>
-        </label>
+    <!-- 登录/注册页面 -->
+    <main id="auth-page" class="container">
+      <div class="auth-container">
+        <h1>JoinList</h1>
+        <p class="subtitle">时间均衡歌单混音器</p>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="login">登录</button>
+          <button class="tab" data-tab="register">注册</button>
+        </div>
+
+        <!-- 登录表单 -->
+        <form id="login-form" class="card auth-form">
+          <div class="field">
+            <label>用户名</label>
+            <input type="text" id="login-username" required autocomplete="username" />
+          </div>
+          <div class="field">
+            <label>密码</label>
+            <input type="password" id="login-password" required autocomplete="current-password" />
+          </div>
+          <div id="login-error" class="error-text"></div>
+          <button type="submit">登录</button>
+        </form>
+
+        <!-- 注册表单 -->
+        <form id="register-form" class="card auth-form hidden">
+          <div class="field">
+            <label>用户名（3-32位字母数字下划线）</label>
+            <input type="text" id="register-username" required autocomplete="username" pattern="[a-zA-Z0-9_]{3,32}" />
+          </div>
+          <div class="field">
+            <label>邮箱（可选）</label>
+            <input type="email" id="register-email" autocomplete="email" />
+          </div>
+          <div class="field">
+            <label>密码（至少6位）</label>
+            <input type="password" id="register-password" required autocomplete="new-password" minlength="6" />
+          </div>
+          <div id="register-error" class="error-text"></div>
+          <button type="submit">注册</button>
+        </form>
+      </div>
+    </main>
+
+    <!-- 主应用页面 -->
+    <main id="app-page" class="container hidden">
+      <header class="app-header">
+        <h1>JoinList</h1>
+        <div class="user-menu">
+          <span id="username-display"></span>
+          <button id="logout-button" class="secondary">退出</button>
+        </div>
+      </header>
+
+      <!-- 网易云绑定区域 -->
+      <section class="card">
+        <h2>网易云账号绑定</h2>
+        <p class="hint">绑定后可创建歌单到你的网易云账号</p>
+        <div id="netease-status" class="status-row">
+          <span id="netease-bound-status">未绑定</span>
+        </div>
         <div class="qr-section">
           <div class="qr-actions">
-            <button type="button" id="qr-button">扫码登录获取 Cookie</button>
+            <button type="button" id="qr-button">扫码绑定</button>
             <span id="qr-status"></span>
           </div>
           <img id="qr-image" alt="网易云登录二维码" />
         </div>
-        <label class="field">
-          <span>源歌单链接（2-10 个，每行一个）</span>
-          <textarea id="sources" rows="6" required></textarea>
-        </label>
-        <label class="field">
-          <span>混合百分比（可选，每行一个，对应歌单顺序；留空则平分剩余）</span>
-          <textarea id="weights" rows="4"></textarea>
-        </label>
+        <div class="cookie-manual">
+          <details>
+            <summary>手动输入 Cookie</summary>
+            <textarea id="cookie-input" rows="3" placeholder="粘贴网易云 Cookie"></textarea>
+            <button type="button" id="bind-cookie-button">绑定 Cookie</button>
+          </details>
+        </div>
+        <button type="button" id="clear-cookie-button" class="secondary small">清除绑定</button>
+        <div id="cookie-status"></div>
+      </section>
+
+      <!-- 歌单混音表单 -->
+      <form id="mix-form" class="card">
+        <h2>创建混音歌单</h2>
+        <!-- >>> 修改开始：改为动态行布局 -->
+        <div class="field">
+          <span>源歌单链接和混合百分比（2-10 个）</span>
+          <div id="source-rows-container">
+            <!-- 动态生成的行将放在这里 -->
+          </div>
+          <button type="button" id="add-source-btn" class="secondary small" style="margin-top: 8px;">+ 新增歌单</button>
+        </div>
+        <!-- 隐藏的原始字段，用于保持向后兼容 -->
+        <textarea id="sources" style="display:none;"></textarea>
+        <textarea id="weights" style="display:none;"></textarea>
+        <!-- >>> 修改结束 -->
         <label class="field">
           <span>目标总时长（分钟）</span>
           <input id="duration" type="number" min="1" value="180" required />
         </label>
         <button type="submit">开始生成</button>
       </form>
+
+      <!-- 任务状态 -->
       <section id="status" class="card status">
         <h2>任务状态</h2>
         <div id="status-text">未开始</div>
@@ -43,7 +123,21 @@
         <div id="distribution"></div>
         <div id="error-text"></div>
       </section>
+
+      <!-- 历史任务 -->
+      <section class="card">
+        <h2>历史任务</h2>
+        <div id="tasks-list"></div>
+      </section>
     </main>
+
     <script src="/app.js"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>

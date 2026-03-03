@@ -86,6 +86,19 @@ export const parsePlaylistIds = (inputs: string[]) => {
   return ids;
 };
 
+export const resolvePlaylistId = async (input: string) => {
+  let candidate = parsePlaylistId(input);
+  if (!candidate && /^https?:\/\//i.test(input)) {
+    try {
+      const response = await fetch(input, { redirect: "follow" });
+      candidate = parsePlaylistId(response.url);
+    } catch {
+      candidate = null;
+    }
+  }
+  return candidate;
+};
+
 /**
  * 批量解析歌单 ID (高级版，支持短链接)
  * @param inputs 用户输入的字符串数组
@@ -97,18 +110,7 @@ export const parsePlaylistIds = (inputs: string[]) => {
 export const resolvePlaylistIds = async (inputs: string[]) => {
   const ids: string[] = [];
   for (const input of inputs) {
-    let candidate = parsePlaylistId(input);
-    
-    // 如果直接解析失败，且看起来像个网址，尝试请求一下看是否重定向
-    if (!candidate && /^https?:\/\//i.test(input)) {
-      try {
-        const response = await fetch(input, { redirect: "follow" });
-        candidate = parsePlaylistId(response.url);
-      } catch (error) {
-        candidate = null;
-      }
-    }
-    
+    const candidate = await resolvePlaylistId(input);
     if (!candidate) {
       continue;
     }
@@ -141,3 +143,42 @@ export const normalizeSign = (title: string, artist: string) =>
  */
 export const hashCookie = (cookie: string) =>
   crypto.createHash("sha256").update(cookie).digest("hex");
+
+const getCookieKey = () => {
+  const secret = process.env.COOKIE_SECRET;
+  if (!secret) {
+    return null;
+  }
+  return crypto.createHash("sha256").update(secret).digest();
+};
+
+export const encryptCookie = (cookie: string) => {
+  const key = getCookieKey();
+  if (!key) {
+    throw new Error("cookie_secret_missing");
+  }
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(cookie, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString("base64")}.${tag.toString("base64")}.${encrypted.toString("base64")}`;
+};
+
+export const decryptCookie = (encrypted: string) => {
+  const key = getCookieKey();
+  if (!key) {
+    throw new Error("cookie_secret_missing");
+  }
+  const parts = encrypted.split(".");
+  if (parts.length !== 3) {
+    throw new Error("cookie_decrypt_failed");
+  }
+  const [ivText, tagText, dataText] = parts;
+  const iv = Buffer.from(ivText, "base64");
+  const tag = Buffer.from(tagText, "base64");
+  const data = Buffer.from(dataText, "base64");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+  return decrypted.toString("utf8");
+};

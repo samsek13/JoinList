@@ -1,11 +1,67 @@
 import {
   playlist_create,
+  playlist_desc_update,
   playlist_detail,
   playlist_track_all,
   playlist_tracks
 } from "NeteaseCloudMusicApi";
 import { Track } from "../types";
 import { normalizeSign, randomInt, sleep } from "../utils";
+
+const getBody = (response: unknown) => {
+  if (response && typeof response === "object" && "body" in response) {
+    return (response as { body: unknown }).body;
+  }
+  return response;
+};
+
+const getCode = (body: unknown) => {
+  if (body && typeof body === "object" && "code" in body) {
+    const code = (body as { code?: unknown }).code;
+    return typeof code === "number" ? code : undefined;
+  }
+  return undefined;
+};
+
+const getPlaylistName = (body: unknown, id: string) => {
+  if (body && typeof body === "object" && "playlist" in body) {
+    const playlist = (body as { playlist?: unknown }).playlist;
+    if (playlist && typeof playlist === "object" && "name" in playlist) {
+      const name = (playlist as { name?: unknown }).name;
+      if (typeof name === "string" && name.trim().length > 0) {
+        return name;
+      }
+    }
+  }
+  return `Playlist ${id}`;
+};
+
+const getSongs = (body: unknown) => {
+  if (body && typeof body === "object" && "songs" in body) {
+    const songs = (body as { songs?: unknown }).songs;
+    return Array.isArray(songs) ? songs : [];
+  }
+  return [];
+};
+
+const getPlaylistId = (body: unknown) => {
+  if (body && typeof body === "object" && "playlist" in body) {
+    const playlist = (body as { playlist?: unknown }).playlist;
+    if (playlist && typeof playlist === "object" && "id" in playlist) {
+      const id = (playlist as { id?: unknown }).id;
+      if (typeof id === "number") {
+        return id;
+      }
+    }
+  }
+  if (body && typeof body === "object" && "id" in body) {
+    const id = (body as { id?: unknown }).id;
+    if (typeof id === "number") {
+      return id;
+    }
+  }
+  return null;
+};
 
 /**
  * 网易云音乐服务提供者类
@@ -28,15 +84,12 @@ export class NeteaseProvider {
   async fetchPlaylistMeta(id: string) {
     // 调用 API 获取详情
     const response = await playlist_detail({ id, cookie: this.cookie });
-    const body = (response as any)?.body ?? response;
-    
-    // 检查 API 是否返回成功 (code 200)
-    if (body?.code && body.code !== 200) {
-      throw new Error(`Netease playlist_detail failed: ${body.code}`);
+    const body = getBody(response);
+    const code = getCode(body);
+    if (code && code !== 200) {
+      throw new Error(`Netease playlist_detail failed: ${code}`);
     }
-    
-    // 提取歌单名称
-    const name = body?.playlist?.name ?? `Playlist ${id}`;
+    const name = getPlaylistName(body, id);
     return { id, name };
   }
 
@@ -61,27 +114,36 @@ export class NeteaseProvider {
         limit,
         offset
       });
-      const body = (response as any)?.body ?? response;
-      
-      if (body?.code && body.code !== 200) {
-        throw new Error(`Netease playlist_track_all failed: ${body.code}`);
+      const body = getBody(response);
+      const code = getCode(body);
+      if (code && code !== 200) {
+        throw new Error(`Netease playlist_track_all failed: ${code}`);
       }
-      
-      const songs = (body as any)?.songs ?? [];
+      const songs = getSongs(body);
       
       // 处理每一首抓到的歌，提取我们需要的信息
       for (const song of songs) {
-        const title = song?.name ?? "";
-        // 提取所有歌手名
-        const artists = (song?.ar ?? []).map((artist: { name: string }) =>
-          artist?.name ? `${artist.name}` : ""
-        );
+        const songRecord =
+          song && typeof song === "object" ? (song as Record<string, unknown>) : {};
+        const title =
+          typeof songRecord.name === "string" ? songRecord.name : "";
+        const artistsRaw = Array.isArray(songRecord.ar) ? songRecord.ar : [];
+        const artists = artistsRaw
+          .map((artist) => {
+            if (artist && typeof artist === "object" && "name" in artist) {
+              const name = (artist as { name?: unknown }).name;
+              return typeof name === "string" ? name : "";
+            }
+            return "";
+          })
+          .filter((name) => name.length > 0);
         const firstArtist = artists[0] ?? "";
-        // 网易云返回的时长是毫秒，我们转换为秒
-        const duration = Math.floor((song?.dt ?? 0) / 1000);
+        const durationMs =
+          typeof songRecord.dt === "number" ? songRecord.dt : 0;
+        const duration = Math.floor(durationMs / 1000);
         
         tracks.push({
-          id: song?.id,
+          id: typeof songRecord.id === "number" ? songRecord.id : 0,
           title,
           artists,
           duration,
@@ -109,21 +171,25 @@ export class NeteaseProvider {
    * @param trackIds 要加入的歌曲 ID 列表
    * @returns 新歌单的 URL 链接
    */
-  async createPlaylist(name: string, trackIds: number[]) {
-    // 1. 先创建一个空歌单
+  async createPlaylist(
+    name: string,
+    trackIds: number[],
+    description?: string
+  ) {
     const createResponse = await playlist_create({
       name,
       privacy: 0, // 0 表示公开歌单 (虽然 API 定义可能变化，但这通常是默认值)
       cookie: this.cookie
     });
-    const createBody = (createResponse as any)?.body ?? createResponse;
-    
-    if (createBody?.code && createBody.code !== 200) {
-      throw new Error(`Netease playlist_create failed: ${createBody.code}`);
+    const createBody = getBody(createResponse);
+    const createCode = getCode(createBody);
+    if (createCode && createCode !== 200) {
+      throw new Error(`Netease playlist_create failed: ${createCode}`);
     }
-    
-    const playlistId =
-      (createBody as any)?.playlist?.id ?? (createBody as any)?.id;
+    const playlistId = getPlaylistId(createBody);
+    if (!playlistId) {
+      throw new Error("Netease playlist_create failed: missing playlist id");
+    }
 
     // 2. 批量把歌加进去
     // 网易云 API 限制一次最多加几百首，为了保险我们按 50 首一组分批加
@@ -137,16 +203,27 @@ export class NeteaseProvider {
         tracks: chunk.join(","), // 歌曲 ID 用逗号拼接
         cookie: this.cookie
       });
-      
-      const body = (response as any)?.body ?? response;
-      if (body?.code && body.code !== 200) {
-        throw new Error(`Netease playlist_tracks failed: ${body.code}`);
+      const body = getBody(response);
+      const code = getCode(body);
+      if (code && code !== 200) {
+        throw new Error(`Netease playlist_tracks failed: ${code}`);
       }
       
       // 每加一批休息一下
       await sleep(randomInt(100, 500));
     }
-    
+    if (description) {
+      const response = await playlist_desc_update({
+        id: playlistId,
+        desc: description,
+        cookie: this.cookie
+      });
+      const body = getBody(response);
+      const code = getCode(body);
+      if (code && code !== 200) {
+        throw new Error(`Netease playlist_desc_update failed: ${code}`);
+      }
+    }
     // 返回新歌单的网页链接
     return `https://music.163.com/#/playlist?id=${playlistId}`;
   }

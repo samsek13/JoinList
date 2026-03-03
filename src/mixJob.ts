@@ -2,6 +2,7 @@ import { prisma } from "./db";
 import { NeteaseProvider } from "./provider/netease";
 import { mixTrackPools } from "./mixer";
 import { TrackPool } from "./types";
+import { decryptCookie } from "./utils";
 
 /**
  * 辅助函数：更新任务状态
@@ -13,6 +14,23 @@ const updateTask = async (taskId: string, data: Record<string, unknown>) => {
     where: { id: taskId },
     data
   });
+};
+
+const normalizeWeights = (weights: number[] | undefined, count: number) => {
+  if (!weights) {
+    return null;
+  }
+  if (weights.length !== count) {
+    throw new Error("weights_invalid");
+  }
+  const sum = weights.reduce((total, value) => total + value, 0);
+  if (Math.abs(sum - 100) > 0.001) {
+    throw new Error("weights_invalid");
+  }
+  if (weights.some((value) => value < 0 || value > 100)) {
+    throw new Error("weights_invalid");
+  }
+  return weights;
 };
 
 /**
@@ -39,16 +57,17 @@ export const processMixTask = async (taskId: string) => {
   }
 
   try {
-    // 解析存储在数据库里的 JSON 配置
     const config = JSON.parse(task.configJson) as {
       maxTotalDuration: number;
       sourceIds: string[];
+      weights?: number[];
     };
-    
-    // 初始化网易云服务，传入用户的 Cookie
-    const provider = new NeteaseProvider(task.owner.cookie);
-    
-    // 更新状态为“处理中”，进度 5%
+    const weights = normalizeWeights(config.weights, config.sourceIds.length);
+    if (!task.owner.cookie) {
+      throw new Error("cookie_missing");
+    }
+    const cookie = decryptCookie(task.owner.cookie);
+    const provider = new NeteaseProvider(cookie);
     await updateTask(taskId, { status: "Processing", progress: 5 });
 
     const pools: TrackPool[] = [];
@@ -110,16 +129,27 @@ export const processMixTask = async (taskId: string) => {
     }
 
     // 3. 调用混音算法，计算出最终要选哪些歌
-    const mixResult = mixTrackPools(pools, config.maxTotalDuration);
+    const mixResult = mixTrackPools(
+      pools,
+      config.maxTotalDuration,
+      weights ?? undefined
+    );
     
     // 更新进度到 85%
     await updateTask(taskId, { progress: 85 });
 
     // 4. 在网易云创建新歌单
     const playlistName = `JoinList ${new Date().toISOString()}`;
+    const description = mixResult.distribution
+      .map((item) => {
+        const minutes = (item.contributedTime / 60).toFixed(1);
+        return `${item.sourceName} ${minutes} 分钟 ${item.songCount} 首`;
+      })
+      .join("\n");
     const resultUrl = await provider.createPlaylist(
       playlistName,
-      mixResult.trackIds
+      mixResult.trackIds,
+      description
     );
     
     // 5. 任务完成！保存结果 URL 和统计数据
@@ -131,16 +161,16 @@ export const processMixTask = async (taskId: string) => {
       distributionJson: JSON.stringify(mixResult.distribution)
     });
   } catch (error) {
-    // 错误处理
     const message =
       error instanceof Error ? error.message : "unknown_error";
-    
-    // 如果错误信息包含 301 或 cookie，说明需要重新登录
     const status =
-      message.includes("301") || message.includes("cookie")
-        ? "NeedAuth"
-        : "Failed";
-        
+      message === "cookie_secret_missing"
+        ? "Failed"
+        : message === "cookie_missing" || message === "cookie_decrypt_failed"
+          ? "NeedAuth"
+          : message.includes("301") || message.includes("cookie")
+            ? "NeedAuth"
+            : "Failed";
     await updateTask(taskId, {
       status,
       progress: 100,

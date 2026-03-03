@@ -1,0 +1,54 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - DATABASE_URL=file:/app/data/prod.db
+      - REDIS_URL=redis://redis:6379
+      - QUEUE_MODE=redis
+      - COOKIE_SECRET=${COOKIE_SECRET}
+      - JWT_SECRET=${JWT_SECRET}
+      - FORCE_HTTPS=${FORCE_HTTPS:-false}
+      - PORT=3000
+    volumes:
+      - sqlite_data:/app/data
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  worker:
+    build: .
+    command: ["node", "dist/worker.js"]
+    environment:
+      - DATABASE_URL=file:/app/data/prod.db
+      - REDIS_URL=redis://redis:6379
+      - QUEUE_MODE=redis
+      - COOKIE_SECRET=${COOKIE_SECRET}
+    volumes:
+      - sqlite_data:/app/data
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  sqlite_data:
+  redis_data:

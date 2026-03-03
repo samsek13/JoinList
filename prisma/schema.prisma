@@ -17,10 +17,17 @@ enum TaskStatus {
 
 model User {
   id            String   @id
-  platform      String
-  cookie        String
+  username      String   @unique
+  email         String?  @unique
+  passwordHash  String
+  platform      String   @default("netease")
+  cookie        String?
   lastLoginTime DateTime
+  isApproved    Boolean  @default(false)
   tasks         Task[]
+  verificationTokens VerificationToken[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model Task {
@@ -36,4 +43,13 @@ model Task {
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
   owner               User       @relation(fields: [ownerId], references: [id])
+}
+
+model VerificationToken {
+  id        String   @id
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
