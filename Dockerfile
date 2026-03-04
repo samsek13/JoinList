@@ -45,5 +45,5 @@ USER nodejs
 
 EXPOSE 3000
 
-# Start server
-CMD ["node", "dist/server.js"]
+# Start server (run migrations first)
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
