@@ -93,9 +93,14 @@ const showAppPage = () => {
   authPage.classList.add("hidden");
   appPage.classList.remove("hidden");
   usernameDisplay.textContent = currentUser?.username || "";
-  // >>> 修改开始：初始化源行
+  // 初始化源行
   initSourceRows();
-  // >>> 修改结束
+  // 清除任务状态显示（防止显示上一个用户的任务结果）
+  statusText.textContent = "";
+  progressText.textContent = "";
+  resultLink.innerHTML = "";
+  distribution.innerHTML = "";
+  errorText.textContent = "";
 };
 
 // Update Netease status display
