@@ -9,8 +9,13 @@ import rateLimit from "express-rate-limit";
 import { prisma } from "./db";
 import { enqueueMixTask } from "./queue";
 import { encryptCookie, resolvePlaylistId } from "./utils";
-import { createUser, authenticateUser, getUserById } from "./auth";
+import { createUser, authenticateUser } from "./auth";
 import { authMiddleware } from "./middleware";
+import {
+  verifyAdminPassword,
+  generateAdminToken,
+  adminMiddleware
+} from "./admin";
 import {
   login_qr_check,
   login_qr_create,
@@ -27,8 +32,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "https://cdn.tailwindcss.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com"],
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: ["'self'"]
     }
@@ -56,7 +61,16 @@ const apiLimiter = rateLimit({
   legacyHeaders: false
 });
 
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // limit each IP to 20 requests per windowMs
+  message: { error: "too_many_requests" },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 app.use("/api/auth", authLimiter);
+app.use("/api/admin/login", adminLimiter);
 app.use("/api", apiLimiter);
 
 app.use((req, res, next) => {
@@ -243,6 +257,106 @@ app.get("/api/auth/me", authMiddleware, (req, res) => {
       hasNeteaseCookie: !!req.user.cookie
     }
   });
+});
+
+// ==================== 管理员相关 API ====================
+
+const adminLoginSchema = z.object({
+  password: z.string().min(1)
+});
+
+const userIdsSchema = z.object({
+  userIds: z.array(z.string().min(1)).min(1).max(100)
+});
+
+/**
+ * POST /api/admin/login
+ * 管理员登录
+ */
+app.post("/api/admin/login", async (req, res) => {
+  try {
+    const payload = adminLoginSchema.parse(req.body);
+
+    // 验证密码
+    const isValid = verifyAdminPassword(payload.password);
+    if (!isValid) {
+      return res.status(401).json({ ok: false, error: "密码错误" });
+    }
+
+    // 生成 token
+    const token = generateAdminToken();
+    return res.json({ ok: true, token });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ ok: false, error: "输入无效" });
+    }
+    const message = error instanceof Error ? error.message : "登录失败";
+    if (message === "ADMIN_PASSWORD not configured") {
+      return res.status(500).json({ ok: false, error: "系统配置错误" });
+    }
+    return res.status(400).json({ ok: false, error: "登录失败" });
+  }
+});
+
+/**
+ * GET /api/admin/users
+ * 获取所有用户列表
+ */
+app.get("/api/admin/users", adminMiddleware, async (_req, res) => {
+  const users = await prisma.user.findMany({
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      isApproved: true,
+      createdAt: true
+    },
+    orderBy: { createdAt: "desc" }
+  });
+  return res.json({ users });
+});
+
+/**
+ * POST /api/admin/users/approve
+ * 批准用户（支持批量）
+ */
+app.post("/api/admin/users/approve", adminMiddleware, async (req, res) => {
+  try {
+    const { userIds } = userIdsSchema.parse(req.body);
+
+    const result = await prisma.user.updateMany({
+      where: { id: { in: userIds } },
+      data: { isApproved: true }
+    });
+
+    return res.json({ ok: true, approvedCount: result.count });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ ok: false, error: "输入无效" });
+    }
+    return res.status(400).json({ ok: false, error: "操作失败" });
+  }
+});
+
+/**
+ * POST /api/admin/users/reject
+ * 拒绝用户（支持批量，删除账户）
+ */
+app.post("/api/admin/users/reject", adminMiddleware, async (req, res) => {
+  try {
+    const { userIds } = userIdsSchema.parse(req.body);
+
+    const result = await prisma.user.deleteMany({
+      where: { id: { in: userIds } }
+    });
+
+    return res.json({ ok: true, rejectedCount: result.count });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ ok: false, error: "输入无效" });
+    }
+    return res.status(400).json({ ok: false, error: "操作失败" });
+  }
 });
 
 // ==================== 网易云相关 API ====================

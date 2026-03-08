@@ -3,6 +3,7 @@ import { verifyToken, getUserById } from "./auth";
 
 // 扩展 Express Request 类型
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       userId?: string;
