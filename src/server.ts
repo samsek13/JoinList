@@ -8,9 +8,10 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { prisma } from "./db";
 import { enqueueMixTask } from "./queue";
-import { encryptCookie, resolvePlaylistId } from "./utils";
+import { encryptCookie, resolvePlaylistId, truncateInput } from "./utils";
 import { createUser, authenticateUser } from "./auth";
 import { authMiddleware } from "./middleware";
+import type { UrlExtractionError } from "./types";
 import {
   verifyAdminPassword,
   generateAdminToken,
@@ -21,6 +22,7 @@ import {
   login_qr_create,
   login_qr_key
 } from "NeteaseCloudMusicApi";
+import { startCleanupScheduler } from "./cleanup";
 
 const app = express();
 if (process.env.FORCE_HTTPS === "true") {
@@ -521,15 +523,40 @@ app.post("/api/mix", authMiddleware, async (req, res) => {
     const sourceIds: string[] = [];
     const sourceWeights: (number | null)[] = [];
     const seenIds = new Set<string>();
+
     for (let index = 0; index < payload.sourceUrls.length; index += 1) {
       const input = payload.sourceUrls[index];
-      const resolved = await resolvePlaylistId(input);
-      if (!resolved) {
-        return res.status(400).json({ error: "sourceUrls_invalid" });
+      const result = await resolvePlaylistId(input);
+
+      // 处理解析失败的情况
+      if (!result.success) {
+        const error = result.error as UrlExtractionError;
+        const errorPrefix = index === 0 ? "第1个歌单链接" : `第${index + 1}个歌单链接`;
+
+        return res.status(400).json({
+          error: `source_url_${error.code}`,
+          details: {
+            inputIndex: index,
+            originalInput: truncateInput(error.originalInput),
+            message: `${errorPrefix}${error.code === 'multiple' ? '有误：' : '：'}${error.message}`
+          }
+        });
       }
+
+      const resolved = result.id!;
+
+      // 检查重复ID
       if (seenIds.has(resolved)) {
-        return res.status(400).json({ error: "sourceUrls_invalid" });
+        return res.status(400).json({
+          error: "source_url_duplicate",
+          details: {
+            inputIndex: index,
+            originalInput: truncateInput(input),
+            message: `第${index + 1}个歌单链接：该歌单已在列表中，请勿重复添加`
+          }
+        });
       }
+
       seenIds.add(resolved);
       sourceIds.push(resolved);
       sourceWeights.push(payload.weights ? payload.weights[index] : null);
@@ -667,6 +694,10 @@ app.get(/.*/, (_req, res) => {
 
 // 启动服务器
 const port = Number(process.env.PORT ?? 3000);
+
+// 启动定时清理任务
+startCleanupScheduler();
+
 app.listen(port, () => {
   process.stdout.write(`Server running on http://localhost:${port}\n`);
 });

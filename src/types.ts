@@ -50,7 +50,7 @@ export type MixConfig = {
 
 /**
  * 定义混音结果 (MixResult)
- * 
+ *
  * 作用：混音算法计算完成后的返回值。
  */
 export type MixResult = {
@@ -58,3 +58,40 @@ export type MixResult = {
   distribution: DistributionItem[]; // 分布统计报告
   trackIds: number[];             // 最终选中的所有歌曲 ID
 };
+
+// ==================== 链接提取相关类型 ====================
+
+/**
+ * 链接提取错误码
+ */
+export type UrlExtractionErrorCode =
+  | 'not_found'      // 未找到链接
+  | 'multiple'       // 找到多个链接
+  | 'invalid_format'; // URL格式无效（非歌单）
+
+/**
+ * 链接提取错误信息
+ */
+export interface UrlExtractionError {
+  code: UrlExtractionErrorCode;
+  message: string;
+  originalInput: string;
+}
+
+/**
+ * 链接提取结果
+ */
+export interface UrlExtractionResult {
+  success: boolean;
+  url?: string;
+  error?: UrlExtractionError;
+}
+
+/**
+ * 歌单解析结果
+ */
+export interface PlaylistResolveResult {
+  success: boolean;
+  id?: string;
+  error?: UrlExtractionError;
+}

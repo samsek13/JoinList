@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import type { UrlExtractionResult, UrlExtractionError, PlaylistResolveResult } from "./types";
 
 /**
  * 等待指定的时间 (Sleep)
@@ -41,15 +42,123 @@ export const shuffle = <T>(items: T[]) => {
   return array;
 };
 
+// ==================== 链接提取相关函数 ====================
+
+/**
+ * 网易云音乐URL匹配正则
+ *
+ * 匹配规则：
+ * - https?://          匹配 http 或 https 协议
+ * - (?:163cn\.tv|music\.163\.com)  匹配短链接或长链接域名
+ * - [^\s<>"']*         匹配链接内容直到空白符或常见分隔符
+ */
+const NETEASE_URL_PATTERN = /https?:\/\/(?:163cn\.tv|music\.163\.com)[^\s<>"']*/gi;
+
+/**
+ * 输入最大长度限制
+ */
+const MAX_INPUT_LENGTH = 2000;
+
+/**
+ * 显示用最大长度限制
+ */
+const MAX_DISPLAY_LENGTH = 100;
+
+/**
+ * 截断原始输入，用于错误响应显示
+ * @param input 原始输入
+ * @returns 截断后的输入（最多100字符）
+ */
+export const truncateInput = (input: string): string => {
+  if (input.length <= MAX_DISPLAY_LENGTH) {
+    return input;
+  }
+  return input.slice(0, MAX_DISPLAY_LENGTH) + '...';
+};
+
+/**
+ * 从输入文本中提取网易云音乐URL
+ *
+ * @param input 用户输入的文本
+ * @returns 提取结果，包含成功状态、URL或错误信息
+ *
+ * @example
+ * // 成功提取
+ * extractNeteaseUrl("分享歌单: 名称 https://163cn.tv/abc (@网易云音乐)")
+ * // => { success: true, url: "https://163cn.tv/abc" }
+ *
+ * @example
+ * // 未找到链接
+ * extractNeteaseUrl("这是一段没有链接的文字")
+ * // => { success: false, error: { code: 'not_found', ... } }
+ *
+ * @example
+ * // 找到多个链接
+ * extractNeteaseUrl("https://163cn.tv/a https://163cn.tv/b")
+ * // => { success: false, error: { code: 'multiple', ... } }
+ */
+export const extractNeteaseUrl = (input: string): UrlExtractionResult => {
+  // 输入长度检查
+  if (input.length > MAX_INPUT_LENGTH) {
+    return {
+      success: false,
+      error: {
+        code: 'not_found',
+        message: '输入内容过长，请检查',
+        originalInput: input.slice(0, 100) + '...'
+      }
+    };
+  }
+
+  const trimmed = input.trim();
+
+  // 使用正则匹配所有网易云链接
+  const matches = trimmed.match(NETEASE_URL_PATTERN);
+
+  // 情况1：未找到链接
+  if (!matches || matches.length === 0) {
+    return {
+      success: false,
+      error: {
+        code: 'not_found',
+        message: '未识别到有效的歌单链接，请检查输入（建议直接粘贴网易云APP歌单分享文本）',
+        originalInput: input
+      }
+    };
+  }
+
+  // 情况2：找到多个链接
+  if (matches.length > 1) {
+    return {
+      success: false,
+      error: {
+        code: 'multiple',
+        message: '输入包含多个链接，请分开输入',
+        originalInput: input
+      }
+    };
+  }
+
+  // 情况3：找到唯一链接，返回成功
+  return {
+    success: true,
+    url: matches[0]
+  };
+};
+
 /**
  * 从输入字符串中提取歌单 ID
+ *
  * @param input 可能是 URL，也可能是纯数字 ID
  * @returns 提取出的数字 ID 字符串，如果没有找到则返回 null
- * 
- * 作用：用户可能会粘贴 "https://music.163.com/playlist?id=12345" 或者直接粘贴 "12345"。
- * 这个函数负责把其中的 "12345" 提取出来。
+ *
+ * @example
+ * parsePlaylistId("12345")                           // => "12345"
+ * parsePlaylistId("https://music.163.com/playlist?id=12345")  // => "12345"
+ * parsePlaylistId("https://music.163.com/#/playlist?id=12345") // => "12345"
+ * parsePlaylistId("https://music.163.com/playlist?id=12345&userid=67890") // => "12345"
  */
-export const parsePlaylistId = (input: string) => {
+export const parsePlaylistId = (input: string): string | null => {
   const trimmed = input.trim();
   // 尝试直接匹配纯数字
   const directMatch = trimmed.match(/^(\d+)$/);
@@ -86,39 +195,114 @@ export const parsePlaylistIds = (inputs: string[]) => {
   return ids;
 };
 
-export const resolvePlaylistId = async (input: string) => {
-  let candidate = parsePlaylistId(input);
-  if (!candidate && /^https?:\/\//i.test(input)) {
-    try {
-      const response = await fetch(input, { redirect: "follow" });
-      candidate = parsePlaylistId(response.url);
-    } catch {
-      candidate = null;
-    }
-  }
-  return candidate;
-};
-
 /**
- * 批量解析歌单 ID (高级版，支持短链接)
- * @param inputs 用户输入的字符串数组
- * @returns Promise<string[]> 解析后的 ID 数组
- * 
- * 作用：有些链接是短链接 (如 https://163cn.tv/xxx)，直接看不出 ID。
- * 这个函数会尝试发起一个网络请求，获取重定向后的真实 URL，再从中提取 ID。
+ * 解析用户输入，获取歌单ID
+ *
+ * @param input 用户输入（可以是分享文本、URL、纯数字ID）
+ * @returns 解析结果，包含成功状态、歌单ID或错误信息
+ *
+ * 处理流程：
+ * 1. 尝试直接解析纯数字ID
+ * 2. 从文本中提取URL（处理分享文本）
+ * 3. 检查URL是否为歌单格式
+ * 4. 尝试直接提取ID或通过重定向解析
  */
-export const resolvePlaylistIds = async (inputs: string[]) => {
-  const ids: string[] = [];
-  for (const input of inputs) {
-    const candidate = await resolvePlaylistId(input);
-    if (!candidate) {
-      continue;
+export const resolvePlaylistId = async (
+  input: string
+): Promise<PlaylistResolveResult> => {
+  const trimmed = input.trim();
+
+  // Step 1: 尝试直接解析纯数字ID
+  const directId = trimmed.match(/^(\d+)$/)?.[1];
+  if (directId) {
+    return { success: true, id: directId };
+  }
+
+  // Step 2: 从文本中提取URL
+  const extraction = extractNeteaseUrl(trimmed);
+  if (!extraction.success) {
+    return {
+      success: false,
+      error: extraction.error
+    };
+  }
+
+  const url = extraction.url!;
+
+  // Step 3: 检查URL是否为歌单格式（用于提前识别非歌单链接）
+  const isPlaylistUrlPattern = /(?:\/playlist|#\/playlist)/i.test(url);
+
+  // Step 4: 尝试从URL中直接提取ID
+  let candidate = parsePlaylistId(url);
+
+  // Step 5: 如果无法直接提取或是短链接，尝试重定向解析
+  if (!candidate) {
+    try {
+      const response = await fetch(url, {
+        redirect: "follow",
+        signal: AbortSignal.timeout(8000)
+      });
+      const finalUrl = response.url;
+      candidate = parsePlaylistId(finalUrl);
+
+      // 检查重定向后的URL是否为歌单
+      if (!candidate || !/(?:\/playlist|#\/playlist)/i.test(finalUrl)) {
+        return {
+          success: false,
+          error: {
+            code: 'invalid_format',
+            message: '链接格式无效，请输入歌单链接而非单曲/专辑链接',
+            originalInput: input
+          }
+        };
+      }
+    } catch {
+      return {
+        success: false,
+        error: {
+          code: 'not_found',
+          message: '无法访问链接，请检查链接是否有效',
+          originalInput: input
+        }
+      };
     }
-    if (!ids.includes(candidate)) {
-      ids.push(candidate);
+  } else if (!isPlaylistUrlPattern) {
+    // 有ID但URL模式不匹配歌单（如单曲链接带id参数）
+    // 需要进一步验证
+    try {
+      const response = await fetch(url, {
+        redirect: "follow",
+        signal: AbortSignal.timeout(8000)
+      });
+      const finalUrl = response.url;
+      if (!/(?:\/playlist|#\/playlist)/i.test(finalUrl)) {
+        return {
+          success: false,
+          error: {
+            code: 'invalid_format',
+            message: '链接格式无效，请输入歌单链接而非单曲/专辑链接',
+            originalInput: input
+          }
+        };
+      }
+    } catch {
+      // 网络错误时保守处理，返回已提取的ID
+      // （可能是有效的歌单链接，只是无法验证）
     }
   }
-  return ids;
+
+  if (!candidate) {
+    return {
+      success: false,
+      error: {
+        code: 'invalid_format',
+        message: '链接格式无效，请输入歌单链接',
+        originalInput: input
+      }
+    };
+  }
+
+  return { success: true, id: candidate };
 };
 
 /**
