@@ -315,6 +315,13 @@ mixForm.addEventListener("submit", async (e) => {
 
   if (!ok) {
     setStatus("提交失败");
+
+    // 处理详细错误信息（后端保证所有链接解析错误都带有 details 字段）
+    if (data.details) {
+      showErrorWithInput(data.details.message, data.details.originalInput);
+      return;
+    }
+
     if (data.error === "netease_not_bound") {
       errorText.textContent = "请先绑定网易云账号";
     } else if (data.error === "weights_invalid") {
@@ -423,7 +430,7 @@ const addSourceRow = (url = "", weight = "") => {
   row.dataset.index = sourceRowCount;
 
   row.innerHTML = `
-    <input type="text" class="source-url" placeholder="https://music.163.com/playlist?id=xxx" value="${url}" required />
+    <input type="text" class="source-url" placeholder="请输入歌单链接，或直接粘贴网易云APP分享文本" value="${url}" required />
     <input type="number" class="source-weight" placeholder="%" value="${weight}" min="0" max="100" />
     ${sourceRowCount > 2 ? `<button type="button" class="remove-btn small" onclick="removeSourceRow(this)">删除</button>` : ""}
   `;
@@ -487,6 +494,31 @@ if (addSourceBtn) {
   addSourceBtn.addEventListener("click", () => addSourceRow());
 }
 // >>> 修改结束
+
+// >>> 新增：错误显示辅助函数
+/**
+ * HTML转义函数，防止XSS
+ * @param text 需要转义的文本
+ * @returns 转义后的安全HTML
+ */
+const escapeHtml = (text) => {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+};
+
+/**
+ * 显示带有原始输入的错误信息
+ * @param message 错误信息
+ * @param originalInput 用户原始输入
+ */
+const showErrorWithInput = (message, originalInput) => {
+  errorText.innerHTML = `
+    <p>${escapeHtml(message)}</p>
+    <p class="hint">原始输入：${escapeHtml(originalInput)}</p>
+  `;
+};
+// >>> 新增结束
 
 // Init
 checkAuth();
