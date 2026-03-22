@@ -198,7 +198,7 @@ app.post("/api/auth/register", async (req, res) => {
     }
 
     const user = await createUser(payload.username, payload.password, email);
-    return res.json({ ok: true, message: "注册申请已提交，请等待管理员批准后登录", userId: user.id });
+    return res.json({ ok: true, message: "注册成功，请登录", userId: user.id });
   } catch (error) {
     if (error instanceof z.ZodError) {
       const firstError = error.issues[0];

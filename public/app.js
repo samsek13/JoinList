@@ -17,8 +17,6 @@ const neteaseBoundStatus = document.getElementById("netease-bound-status");
 const qrButton = document.getElementById("qr-button");
 const qrImage = document.getElementById("qr-image");
 const qrStatus = document.getElementById("qr-status");
-const cookieInput = document.getElementById("cookie-input");
-const bindCookieButton = document.getElementById("bind-cookie-button");
 const clearCookieButton = document.getElementById("clear-cookie-button");
 const cookieStatus = document.getElementById("cookie-status");
 const mixForm = document.getElementById("mix-form");
@@ -156,8 +154,7 @@ registerForm.addEventListener("submit", async (e) => {
   });
 
   if (ok && data.ok) {
-    // 注册成功，显示等待批准消息
-    registerError.textContent = data.message || "注册申请已提交，请等待管理员批准后登录";
+    registerError.textContent = data.message || "注册成功，请登录";
     registerError.style.color = "#4caf50";
     registerForm.reset();
     // 2秒后切换到登录页
@@ -235,27 +232,6 @@ qrButton.addEventListener("click", async () => {
   }
   setQrStatus("请使用网易云 App 扫码");
   startQrPolling();
-});
-
-// Bind cookie manually
-bindCookieButton.addEventListener("click", async () => {
-  const cookie = cookieInput.value.trim();
-  if (!cookie) {
-    cookieStatus.textContent = "请输入 Cookie";
-    return;
-  }
-  cookieStatus.textContent = "绑定中...";
-  const { ok, data } = await api("/api/netease/bind-cookie", {
-    method: "POST",
-    body: JSON.stringify({ cookie })
-  });
-  if (ok) {
-    cookieStatus.textContent = "绑定成功";
-    cookieInput.value = "";
-    updateNeteaseStatus(true);
-  } else {
-    cookieStatus.textContent = data.error || "绑定失败";
-  }
 });
 
 // Clear cookie

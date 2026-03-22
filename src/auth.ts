@@ -67,7 +67,8 @@ export const createUser = async (
       username,
       email: email || null,
       passwordHash,
-      lastLoginTime: new Date()
+      lastLoginTime: new Date(),
+      isApproved: true
     }
   });
 
