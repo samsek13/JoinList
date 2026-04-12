@@ -12,6 +12,8 @@ declare global {
         username: string;
         email: string | null;
         cookie?: string | null;
+        soundcloudToken?: string | null;
+        soundcloudUsername?: string | null;
         createdAt: Date;
       };
     }

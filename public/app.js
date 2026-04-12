@@ -19,11 +19,16 @@ const qrImage = document.getElementById("qr-image");
 const qrStatus = document.getElementById("qr-status");
 const clearCookieButton = document.getElementById("clear-cookie-button");
 const cookieStatus = document.getElementById("cookie-status");
+const soundcloudBoundStatus = document.getElementById("soundcloud-bound-status");
+const soundcloudBindButton = document.getElementById("soundcloud-bind-button");
+const soundcloudUnbindButton = document.getElementById("soundcloud-unbind-button");
+const outputPlatformSelect = document.getElementById("output-platform");
 const mixForm = document.getElementById("mix-form");
 const statusText = document.getElementById("status-text");
 const progressText = document.getElementById("progress-text");
 const resultLink = document.getElementById("result-link");
 const distribution = document.getElementById("distribution");
+const skipStatsDiv = document.getElementById("skip-stats");
 const errorText = document.getElementById("error-text");
 const tasksList = document.getElementById("tasks-list");
 // >>> 修改开始：添加动态行相关元素引用
@@ -73,6 +78,7 @@ const checkAuth = async () => {
     currentUser = data.user;
     showAppPage();
     updateNeteaseStatus(data.user.hasNeteaseCookie);
+    updateSoundcloudStatus();
     loadTasks();
   } else {
     localStorage.removeItem("token");
@@ -98,6 +104,7 @@ const showAppPage = () => {
   progressText.textContent = "";
   resultLink.innerHTML = "";
   distribution.innerHTML = "";
+  skipStatsDiv.innerHTML = "";
   errorText.textContent = "";
 };
 
@@ -243,11 +250,59 @@ clearCookieButton.addEventListener("click", async () => {
   }
 });
 
+// SoundCloud status
+const updateSoundcloudStatus = async () => {
+  const { ok, data } = await api("/api/soundcloud/status");
+  if (ok && data.bound) {
+    soundcloudBoundStatus.textContent = `已绑定 (${data.username || "Unknown"})`;
+    soundcloudBoundStatus.classList.add("bound");
+    soundcloudBindButton.style.display = "none";
+    soundcloudUnbindButton.style.display = "inline-block";
+  } else {
+    soundcloudBoundStatus.textContent = "未绑定";
+    soundcloudBoundStatus.classList.remove("bound");
+    soundcloudBindButton.style.display = "inline-block";
+    soundcloudUnbindButton.style.display = "none";
+  }
+};
+
+// SoundCloud bind
+soundcloudBindButton.addEventListener("click", async () => {
+  const { ok, data } = await api("/api/soundcloud/bind", { method: "POST" });
+  if (ok && data.url) {
+    window.location.href = data.url;
+  } else {
+    errorText.textContent = data?.error || "发起绑定失败，请重试";
+  }
+});
+
+// SoundCloud unbind
+soundcloudUnbindButton.addEventListener("click", async () => {
+  const { ok } = await api("/api/soundcloud/unbind", { method: "POST" });
+  if (ok) {
+    updateSoundcloudStatus();
+  }
+});
+
+// Handle OAuth callback params
+const handleOAuthCallback = () => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("soundcloud_bound") === "1") {
+    updateSoundcloudStatus();
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+  if (params.get("error")) {
+    errorText.textContent = "SoundCloud 授权失败，请重试";
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+};
+
 // Mix form
 mixForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   resultLink.innerHTML = "";
   distribution.innerHTML = "";
+  skipStatsDiv.innerHTML = "";
   errorText.textContent = "";
   setStatus("提交中");
 
@@ -275,10 +330,12 @@ mixForm.addEventListener("submit", async (e) => {
   const hasWeights = weights.some((value) => value !== null);
   const minutes = Number(document.getElementById("duration").value || 0);
   const maxTotalDuration = Math.floor(minutes * 60);
+  const outputPlatform = outputPlatformSelect.value;
 
   const payload = {
     sourceUrls: sources,
-    maxTotalDuration
+    maxTotalDuration,
+    outputPlatform
   };
   if (hasWeights) {
     payload.weights = weights;
@@ -300,10 +357,14 @@ mixForm.addEventListener("submit", async (e) => {
 
     if (data.error === "netease_not_bound") {
       errorText.textContent = "请先绑定网易云账号";
+    } else if (data.error === "soundcloud_not_bound") {
+      errorText.textContent = "请先绑定 SoundCloud 账号";
     } else if (data.error === "weights_invalid") {
       errorText.textContent = "混合百分比无效，请检查总和是否为 100";
     } else if (data.error === "sourceUrls_invalid") {
       errorText.textContent = "歌单链接无效或存在重复";
+    } else if (data.error === "unsupported_platform") {
+      errorText.textContent = "不支持的平台，请使用网易云或 SoundCloud 歌单链接";
     } else if (data.error === "unauthorized") {
       errorText.textContent = "请重新登录";
       showAuthPage();
@@ -337,6 +398,17 @@ const renderDistribution = (items) => {
   });
 };
 
+const renderSkipStats = (skipStats) => {
+  skipStatsDiv.innerHTML = "";
+  if (!skipStats || !skipStats.length) return;
+  skipStats.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "skip-stats-item";
+    row.textContent = `${item.sourceName}：因目标平台无匹配跳过 ${item.skippedCount} 首`;
+    skipStatsDiv.appendChild(row);
+  });
+};
+
 const pollTask = async (taskId) => {
   const { ok, data } = await api(`/api/task/${taskId}`);
   if (!ok) {
@@ -346,6 +418,7 @@ const pollTask = async (taskId) => {
   setStatus(data.status);
   setProgress(data.progress);
   renderDistribution(data.distribution);
+  renderSkipStats(data.skipStats);
   if (data.errorMessage) {
     errorText.textContent = data.errorMessage;
   }
@@ -497,4 +570,5 @@ const showErrorWithInput = (message, originalInput) => {
 // >>> 新增结束
 
 // Init
+handleOAuthCallback();
 checkAuth();

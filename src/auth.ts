@@ -129,6 +129,8 @@ export const getUserById = async (userId: string) => {
       username: true,
       email: true,
       cookie: true,
+      soundcloudToken: true,
+      soundcloudUsername: true,
       createdAt: true
     }
   });

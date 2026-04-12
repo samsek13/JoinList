@@ -126,6 +126,19 @@
         <div id="cookie-status"></div>
       </section>
 
+      <!-- SoundCloud 绑定区域 -->
+      <section class="card">
+        <h2>SoundCloud 账号绑定</h2>
+        <p class="hint">绑定后可创建歌单到你的 SoundCloud 账号</p>
+        <div id="soundcloud-status" class="status-row">
+          <span id="soundcloud-bound-status">未绑定</span>
+        </div>
+        <div id="soundcloud-actions">
+          <button type="button" id="soundcloud-bind-button">绑定 SoundCloud</button>
+          <button type="button" id="soundcloud-unbind-button" class="secondary small" style="display:none;">解绑</button>
+        </div>
+      </section>
+
       <!-- 歌单混音表单 -->
       <form id="mix-form" class="card">
         <h2>创建混音歌单</h2>
@@ -145,6 +158,13 @@
           <span>目标总时长（分钟）</span>
           <input id="duration" type="number" min="1" value="180" required />
         </label>
+        <label class="field">
+          <span>输出平台</span>
+          <select id="output-platform">
+            <option value="netease">网易云音乐</option>
+            <option value="soundcloud">SoundCloud</option>
+          </select>
+        </label>
         <button type="submit">开始生成</button>
       </form>
 
@@ -155,6 +175,7 @@
         <div id="progress-text"></div>
         <div id="result-link"></div>
         <div id="distribution"></div>
+        <div id="skip-stats"></div>
         <div id="error-text"></div>
       </section>
 

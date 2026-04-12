@@ -7,7 +7,7 @@ import { shuffle } from "./utils";
  * @param maxTotalDuration 用户设定的最大总时长 (秒)
  * @returns MixResult 计算结果 (包含选中的歌、实际时长、分布统计)
  * 
- * 作用：这是整个应用最核心的“大脑”。它不关心网络请求，只负责做数学题：
+ * 作用：这是整个应用最核心的"大脑"。它不关心网络请求，只负责做数学题：
  * 如何从 N 个歌单里凑出总时长为 T 的新歌单，且保证大家时长相等。
  */
 export const mixTrackPools = (
@@ -17,16 +17,16 @@ export const mixTrackPools = (
 ): MixResult => {
   const poolCount = pools.length; // 源歌单的数量
   
-  // 步骤 1：计算每个歌单的“理论目标时长”
+  // 步骤 1：计算每个歌单的"理论目标时长"
   // 比如总时长 60分钟，有 3 个歌单，那每个歌单理论上应该出 20分钟。
   const initialTarget = Math.floor(maxTotalDuration / poolCount);
   
-  // 步骤 2：获取每个歌单的“实际总时长”
+  // 步骤 2：获取每个歌单的"实际总时长"
   // 有可能某个歌单只有 5 分钟，根本凑不够 20 分钟。
   const poolDurations = pools.map((pool) => pool.totalDuration);
   
-  // 步骤 3：确定最终的“单源目标时长” (tTarget)
-  // 根据“木桶效应”，为了公平，大家的配额必须看那个“最短的歌单”。
+  // 步骤 3：确定最终的"单源目标时长" (tTarget)
+  // 根据"木桶效应"，为了公平，大家的配额必须看那个"最短的歌单"。
   // 如果歌单 A 只有 5 分钟，那所有歌单都只能出 5 分钟。
   const tTarget = Math.min(initialTarget, ...poolDurations);
   const useWeighted = Boolean(weights && weights.length === poolCount);
@@ -40,7 +40,7 @@ export const mixTrackPools = (
     : pools.map(() => tTarget);
   
   const distribution = []; // 用于存放统计数据
-  const trackIds: number[] = []; // 用于存放最终选中的歌曲 ID
+  const trackIds: string[] = []; // 用于存放最终选中的歌曲 ID
   let actualTotalDuration = 0; // 记录实际凑出来的总时长
 
   // 步骤 4：开始对每个歌单进行抽取
@@ -51,7 +51,7 @@ export const mixTrackPools = (
     
     let currentDuration = 0; // 当前歌单已选的时长
     const target = targets[index];
-    const selectedIds: number[] = []; // 当前歌单已选的 ID
+    const selectedIds: string[] = []; // 当前歌单已选的 ID
     
     // 4.2 贪心算法：按顺序一首首加，直到快溢出 tTarget
     for (const track of shuffled) {

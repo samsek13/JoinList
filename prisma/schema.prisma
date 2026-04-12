@@ -21,13 +21,16 @@ model User {
   email         String?  @unique
   passwordHash  String
   platform      String   @default("netease")
-  cookie        String?
-  lastLoginTime DateTime
-  isApproved    Boolean  @default(false)
-  tasks         Task[]
-  verificationTokens VerificationToken[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  cookie                 String?
+  soundcloudToken        String?
+  soundcloudRefreshToken String?
+  soundcloudUsername     String?
+  lastLoginTime          DateTime
+  isApproved             Boolean  @default(false)
+  tasks                  Task[]
+  verificationTokens     VerificationToken[]
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }
 
 model Task {
@@ -56,4 +59,16 @@ model VerificationToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OAuthState {
+  id           String   @id @default(cuid())
+  userId       String
+  state        String   @unique
+  codeVerifier String
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  @@index([userId])
+  @@index([expiresAt])
 }

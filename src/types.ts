@@ -4,7 +4,7 @@
  * 作用：在代码中传递歌曲信息时，必须包含这些字段。
  */
 export type Track = {
-  id: number;          // 网易云音乐的歌曲 ID
+  id: string;          // 平台内唯一标识（统一为 string；SoundCloud 优先 urn）
   title: string;       // 歌曲标题
   artists: string[];   // 歌手列表 (可能有多个歌手)
   duration: number;    // 歌曲时长 (单位：秒)
@@ -15,7 +15,7 @@ export type Track = {
  * 定义歌单池 (TrackPool) 的结构
  * 
  * 作用：表示一个源歌单及其包含的所有可用歌曲。
- * 就像一个装满候选歌曲的“池子”。
+ * 就像一个装满候选歌曲的"池子"。
  */
 export type TrackPool = {
   sourceId: string;    // 源歌单 ID
@@ -56,7 +56,7 @@ export type MixConfig = {
 export type MixResult = {
   actualTotalDuration: number;    // 实际生成的总时长
   distribution: DistributionItem[]; // 分布统计报告
-  trackIds: number[];             // 最终选中的所有歌曲 ID
+  trackIds: string[];             // 最终选中的所有歌曲 ID
 };
 
 // ==================== 链接提取相关类型 ====================
@@ -94,4 +94,15 @@ export interface PlaylistResolveResult {
   success: boolean;
   id?: string;
   error?: UrlExtractionError;
+}
+
+/**
+ * Provider 接口定义
+ * 所有平台 Provider 必须实现此接口
+ */
+export interface IProvider {
+  fetchPlaylistMeta(playlistId: string): Promise<{ id: string; name: string; trackCount: number }>;
+  fetchPlaylistTracks(playlistId: string): Promise<Track[]>;
+  createPlaylist(name: string, trackIds: string[], description?: string): Promise<string>;
+  searchTrack(query: string, targetDuration?: number): Promise<Track | null>;
 }

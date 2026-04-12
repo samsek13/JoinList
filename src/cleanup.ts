@@ -25,6 +25,15 @@ export async function cleanupOldTasks(): Promise<number> {
   });
 
   console.log(`[Cleanup] Deleted ${result.count} expired task(s)`);
+
+  // Clean up expired OAuthState records
+  const oauthResult = await prisma.oAuthState.deleteMany({
+    where: { expiresAt: { lt: new Date() } }
+  });
+  if (oauthResult.count > 0) {
+    console.log(`[Cleanup] Deleted ${oauthResult.count} expired OAuthState record(s)`);
+  }
+
   return result.count;
 }
 

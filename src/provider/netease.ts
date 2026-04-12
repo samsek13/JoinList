@@ -3,9 +3,10 @@ import {
   playlist_desc_update,
   playlist_detail,
   playlist_track_all,
-  playlist_tracks
+  playlist_tracks,
+  search
 } from "NeteaseCloudMusicApi";
-import { Track } from "../types";
+import type { Track, IProvider } from "../types";
 import { normalizeSign, randomInt, sleep } from "../utils";
 
 const getBody = (response: unknown) => {
@@ -63,13 +64,28 @@ const getPlaylistId = (body: unknown) => {
   return null;
 };
 
+const getTrackCount = (body: unknown): number => {
+  if (body && typeof body === "object") {
+    // playlist_detail 响应格式
+    if ("playlist" in body) {
+      const playlist = (body as { playlist?: unknown }).playlist;
+      if (playlist && typeof playlist === "object") {
+        const pl = playlist as Record<string, unknown>;
+        if (typeof pl.trackCount === "number") return pl.trackCount;
+        if (Array.isArray(pl.tracks)) return pl.tracks.length;
+      }
+    }
+  }
+  return 0;
+};
+
 /**
  * 网易云音乐服务提供者类
  * 
  * 作用：封装所有与网易云 API 的交互逻辑。
  * 它把复杂的 API 调用（如翻页、鉴权）包装成简单的方法供外部调用。
  */
-export class NeteaseProvider {
+export class NeteaseProvider implements IProvider {
   private cookie: string; // 用户的登录凭证
 
   constructor(cookie: string) {
@@ -79,9 +95,9 @@ export class NeteaseProvider {
   /**
    * 获取歌单的基本信息（元数据）
    * @param id 歌单 ID
-   * @returns { id, name }
+   * @returns { id, name, trackCount }
    */
-  async fetchPlaylistMeta(id: string) {
+  async fetchPlaylistMeta(id: string): Promise<{ id: string; name: string; trackCount: number }> {
     // 调用 API 获取详情
     const response = await playlist_detail({ id, cookie: this.cookie });
     const body = getBody(response);
@@ -90,7 +106,9 @@ export class NeteaseProvider {
       throw new Error(`Netease playlist_detail failed: ${code}`);
     }
     const name = getPlaylistName(body, id);
-    return { id, name };
+    // 从 API 响应中提取 trackCount
+    const trackCount = getTrackCount(body);
+    return { id, name, trackCount };
   }
 
   /**
@@ -143,7 +161,7 @@ export class NeteaseProvider {
         const duration = Math.floor(durationMs / 1000);
         
         tracks.push({
-          id: typeof songRecord.id === "number" ? songRecord.id : 0,
+          id: typeof songRecord.id === "number" ? String(songRecord.id) : "0",
           title,
           artists,
           duration,
@@ -173,7 +191,7 @@ export class NeteaseProvider {
    */
   async createPlaylist(
     name: string,
-    trackIds: number[],
+    trackIds: string[],
     description?: string
   ) {
     const createResponse = await playlist_create({
@@ -226,5 +244,83 @@ export class NeteaseProvider {
     }
     // 返回新歌单的网页链接
     return `https://music.163.com/#/playlist?id=${playlistId}`;
+  }
+
+  /**
+   * 搜索歌曲（用于跨平台匹配）
+   * @param query 搜索关键词（格式："{title} {artist}"）
+   * @param targetDuration 目标时长（秒），用于选择最接近的版本
+   * @returns Track 或 null
+   */
+  async searchTrack(query: string, targetDuration?: number): Promise<Track | null> {
+    const response = await search({
+      keywords: query,
+      limit: 10,
+      cookie: this.cookie
+    });
+
+    const body = getBody(response);
+    const code = getCode(body);
+    if (code && code !== 200) {
+      throw new Error(`Netease search failed: ${code}`);
+    }
+
+    const result = body && typeof body === "object" && "result" in body
+      ? (body as { result?: unknown }).result
+      : null;
+
+    const songs = result && typeof result === "object" && "songs" in result
+      ? (result as { songs?: unknown }).songs
+      : [];
+
+    if (!Array.isArray(songs) || songs.length === 0) {
+      return null;
+    }
+
+    const tracks: Track[] = songs.map((song: unknown) => {
+      const songRecord = song && typeof song === "object"
+        ? (song as Record<string, unknown>)
+        : {};
+
+      const title = typeof songRecord.name === "string" ? songRecord.name : "";
+      const artistsRaw = Array.isArray(songRecord.ar) ? songRecord.ar : [];
+      const artists = artistsRaw
+        .map((artist: unknown) => {
+          if (artist && typeof artist === "object" && "name" in artist) {
+            const name = (artist as { name?: unknown }).name;
+            return typeof name === "string" ? name : "";
+          }
+          return "";
+        })
+        .filter((name: string) => name.length > 0);
+
+      const durationMs = typeof songRecord.dt === "number" ? songRecord.dt : 0;
+      const duration = Math.floor(durationMs / 1000);
+
+      return {
+        id: String(songRecord.id),
+        title,
+        artists,
+        duration,
+        sign: normalizeSign(title, artists[0] || "")
+      };
+    });
+
+    if (targetDuration) {
+      let bestMatch = tracks[0];
+      let bestDiff = Math.abs(bestMatch.duration - targetDuration);
+
+      for (const track of tracks) {
+        const diff = Math.abs(track.duration - targetDuration);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestMatch = track;
+        }
+      }
+
+      return bestMatch;
+    }
+
+    return tracks[0];
   }
 }

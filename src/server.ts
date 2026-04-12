@@ -8,7 +8,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { prisma } from "./db";
 import { enqueueMixTask } from "./queue";
-import { encryptCookie, resolvePlaylistId, truncateInput } from "./utils";
+import { decryptCookie, encryptCookie, identifyPlatform, resolvePlaylistId, truncateInput } from "./utils";
 import { createUser, authenticateUser } from "./auth";
 import { authMiddleware } from "./middleware";
 import type { UrlExtractionError } from "./types";
@@ -23,6 +23,16 @@ import {
   login_qr_key
 } from "NeteaseCloudMusicApi";
 import { startCleanupScheduler } from "./cleanup";
+import {
+  getAuthorizationUrl,
+  storeOAuthState,
+  verifyOAuthState,
+  deleteOAuthState,
+  exchangeCodeForToken,
+  getSoundCloudUser,
+  storeToken
+} from "./soundcloudAuth";
+import { SoundCloudProvider } from "./provider/soundcloud";
 
 const app = express();
 if (process.env.FORCE_HTTPS === "true") {
@@ -107,7 +117,8 @@ const loginSchema = z.object({
 const mixRequestSchema = z.object({
   sourceUrls: z.array(z.string().min(1)).min(2).max(10),
   maxTotalDuration: z.number().int().positive(),
-  weights: z.array(z.number().min(0).max(100).nullable()).optional()
+  weights: z.array(z.number().min(0).max(100).nullable()).optional(),
+  outputPlatform: z.enum(["netease", "soundcloud"]).optional()
 });
 
 const checkUrl = async (url: string) => {
@@ -257,7 +268,8 @@ app.get("/api/auth/me", authMiddleware, (req, res) => {
       id: req.user.id,
       username: req.user.username,
       email: req.user.email,
-      hasNeteaseCookie: !!req.user.cookie
+      hasNeteaseCookie: !!req.user.cookie,
+      hasSoundcloudToken: !!req.user.soundcloudToken
     }
   });
 });
@@ -497,6 +509,158 @@ app.post("/api/netease/clear-cookie", authMiddleware, async (req, res) => {
   }
 });
 
+// ==================== SoundCloud OAuth 相关 API ====================
+
+/**
+ * 解析 SoundCloud 歌单 URL 为 playlist ID
+ */
+async function resolveSoundCloudPlaylistId(
+  input: string,
+  user?: { soundcloudToken?: string | null }
+): Promise<{
+  success: true;
+  playlistId: string;
+  name: string;
+} | {
+  success: false;
+  error: string;
+  message: string;
+}> {
+  try {
+    let accessToken: string | undefined;
+    if (user?.soundcloudToken) {
+      accessToken = decryptCookie(user.soundcloudToken);
+    }
+
+    const provider = new SoundCloudProvider(accessToken);
+    const playlistId = await provider.resolvePlaylistUrl(input);
+    const meta = await provider.fetchPlaylistMeta(playlistId);
+
+    return {
+      success: true,
+      playlistId,
+      name: meta.name
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown_error";
+
+    if (message === "not_a_playlist") {
+      return {
+        success: false,
+        error: "not_a_playlist",
+        message: "该链接不是歌单，可能是单曲或用户主页"
+      };
+    }
+    if (message === "private_playlist_unauthorized") {
+      return {
+        success: false,
+        error: "private_playlist_unauthorized",
+        message: "该歌单为私密歌单，请先绑定 SoundCloud 账号"
+      };
+    }
+
+    return {
+      success: false,
+      error: "invalid_url",
+      message: "无法访问该歌单，请检查链接是否正确"
+    };
+  }
+}
+
+/**
+ * POST /api/soundcloud/bind
+ * 发起 SoundCloud OAuth 绑定（返回授权 URL，前端负责跳转）
+ */
+app.post("/api/soundcloud/bind", authMiddleware, async (req, res) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  const { url, state, verifier } = getAuthorizationUrl(req.userId);
+  await storeOAuthState(req.userId, state, verifier);
+
+  res.json({ url });
+});
+
+/**
+ * GET /api/soundcloud/callback
+ * OAuth 回调处理
+ */
+app.get("/api/soundcloud/callback", async (req, res) => {
+  const { code, state } = req.query as { code?: string; state?: string };
+
+  if (!code || !state) {
+    return res.redirect("/?error=oauth_failed");
+  }
+
+  const stateData = await verifyOAuthState(state);
+  if (!stateData) {
+    return res.redirect("/?error=state_invalid");
+  }
+
+  try {
+    const tokens = await exchangeCodeForToken(code, stateData.verifier);
+    let username = "Unknown";
+    try {
+      username = await getSoundCloudUser(tokens.accessToken);
+    } catch {
+      // User info fetch failed, continue with default username
+    }
+
+    await storeToken(stateData.userId, tokens.accessToken, tokens.refreshToken, username);
+    await deleteOAuthState(state);
+
+    res.redirect("/?soundcloud_bound=1");
+  } catch (error) {
+    res.redirect("/?error=oauth_failed");
+  }
+});
+
+/**
+ * GET /api/soundcloud/status
+ * 查询 SoundCloud 绑定状态
+ */
+app.get("/api/soundcloud/status", authMiddleware, async (req, res) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: req.userId },
+    select: { soundcloudToken: true, soundcloudUsername: true }
+  });
+
+  if (!user || !user.soundcloudToken) {
+    return res.json({ bound: false });
+  }
+
+  return res.json({
+    bound: true,
+    username: user.soundcloudUsername || "Unknown"
+  });
+});
+
+/**
+ * POST /api/soundcloud/unbind
+ * 解绑 SoundCloud 账号
+ */
+app.post("/api/soundcloud/unbind", authMiddleware, async (req, res) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  await prisma.user.update({
+    where: { id: req.userId },
+    data: {
+      soundcloudToken: null,
+      soundcloudRefreshToken: null,
+      soundcloudUsername: null
+    }
+  });
+
+  res.json({ ok: true });
+});
+
 // ==================== 混音任务相关 API ====================
 
 /**
@@ -509,44 +673,86 @@ app.post("/api/mix", authMiddleware, async (req, res) => {
       return res.status(401).json({ error: "unauthorized" });
     }
 
-    // 检查用户是否已绑定网易云 Cookie
-    if (!req.user.cookie) {
-      return res.status(403).json({ error: "netease_not_bound" });
-    }
-
     const payload = mixRequestSchema.parse(req.body);
 
     if (payload.weights && payload.weights.length !== payload.sourceUrls.length) {
       return res.status(400).json({ error: "weights_invalid" });
     }
 
+    const outputPlatform = payload.outputPlatform ?? "netease";
+
+    // Check output platform binding
+    if (outputPlatform === "netease" && !req.user.cookie) {
+      return res.status(403).json({ error: "netease_not_bound" });
+    }
+    if (outputPlatform === "soundcloud" && !req.user.soundcloudToken) {
+      return res.status(403).json({ error: "soundcloud_not_bound" });
+    }
+
     const sourceIds: string[] = [];
+    const sourcePlatforms: string[] = [];
+    const sourceNames: string[] = [];
     const sourceWeights: (number | null)[] = [];
     const seenIds = new Set<string>();
 
     for (let index = 0; index < payload.sourceUrls.length; index += 1) {
       const input = payload.sourceUrls[index];
-      const result = await resolvePlaylistId(input);
 
-      // 处理解析失败的情况
-      if (!result.success) {
-        const error = result.error as UrlExtractionError;
-        const errorPrefix = index === 0 ? "第1个歌单链接" : `第${index + 1}个歌单链接`;
-
+      // Step 1: Identify platform
+      const platform = identifyPlatform(input);
+      if (!platform) {
         return res.status(400).json({
-          error: `source_url_${error.code}`,
+          error: "unsupported_platform",
           details: {
             inputIndex: index,
-            originalInput: truncateInput(error.originalInput),
-            message: `${errorPrefix}${error.code === 'multiple' ? '有误：' : '：'}${error.message}`
+            originalInput: truncateInput(input),
+            message: `第${index + 1}个歌单链接：不支持该平台，请使用网易云或 SoundCloud 歌单链接`
           }
         });
       }
 
-      const resolved = result.id!;
+      // Step 2: Resolve by platform
+      let resolvedId: string;
+      let name = "";
 
-      // 检查重复ID
-      if (seenIds.has(resolved)) {
+      if (platform === "netease") {
+        const result = await resolvePlaylistId(input);
+
+        if (!result.success) {
+          const error = result.error as UrlExtractionError;
+          const errorPrefix = index === 0 ? "第1个歌单链接" : `第${index + 1}个歌单链接`;
+
+          return res.status(400).json({
+            error: `source_url_${error.code}`,
+            details: {
+              inputIndex: index,
+              originalInput: truncateInput(error.originalInput),
+              message: `${errorPrefix}${error.code === 'multiple' ? '有误：' : '：'}${error.message}`
+            }
+          });
+        }
+
+        resolvedId = result.id!;
+      } else {
+        // SoundCloud
+        const result = await resolveSoundCloudPlaylistId(input, req.user);
+        if (!result.success) {
+          return res.status(400).json({
+            error: result.error,
+            details: {
+              inputIndex: index,
+              originalInput: truncateInput(input),
+              message: `第${index + 1}个歌单链接：${result.message}`
+            }
+          });
+        }
+        resolvedId = result.playlistId;
+        name = result.name;
+      }
+
+      // Step 3: Check duplicate (with platform prefix)
+      const uniqueKey = `${platform}:${resolvedId}`;
+      if (seenIds.has(uniqueKey)) {
         return res.status(400).json({
           error: "source_url_duplicate",
           details: {
@@ -557,8 +763,10 @@ app.post("/api/mix", authMiddleware, async (req, res) => {
         });
       }
 
-      seenIds.add(resolved);
-      sourceIds.push(resolved);
+      seenIds.add(uniqueKey);
+      sourceIds.push(resolvedId);
+      sourcePlatforms.push(platform);
+      sourceNames.push(name);
       sourceWeights.push(payload.weights ? payload.weights[index] : null);
     }
 
@@ -580,7 +788,10 @@ app.post("/api/mix", authMiddleware, async (req, res) => {
         configJson: JSON.stringify({
           maxTotalDuration: payload.maxTotalDuration,
           sourceIds,
-          weights: normalizedWeights ?? undefined
+          sourcePlatforms,
+          sourceNames,
+          weights: normalizedWeights ?? undefined,
+          outputPlatform
         })
       }
     });
@@ -627,6 +838,10 @@ app.get("/api/task/:id", authMiddleware, async (req, res) => {
     ? JSON.parse(task.distributionJson)
     : null;
 
+  const config = JSON.parse(task.configJson || "{}") as {
+    skipStats?: Array<{ sourceName: string; skippedCount: number; reason: string }>;
+  };
+
   return res.json({
     id: task.id,
     status: task.status,
@@ -634,7 +849,8 @@ app.get("/api/task/:id", authMiddleware, async (req, res) => {
     resultUrl: task.resultUrl,
     errorMessage: task.errorMessage,
     actualTotalDuration: task.actualTotalDuration,
-    distribution
+    distribution,
+    skipStats: config.skipStats || []
   });
 });
 

@@ -7,7 +7,7 @@ import type { UrlExtractionResult, UrlExtractionError, PlaylistResolveResult } f
  * @returns Promise，在指定时间后 resolve
  * 
  * 作用：暂停程序的执行。这在调用外部 API 时很有用，比如为了避免请求太快被封号，
- * 我们可以在两次请求之间“睡”一会儿。
+ * 我们可以在两次请求之间"睡"一会儿。
  */
 export const sleep = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -30,7 +30,7 @@ export const randomInt = (min: number, max: number) =>
  * @returns 打乱顺序后的新数组
  * 
  * 作用：就像洗扑克牌一样，把数组里的元素顺序完全打乱。
- * 这是实现“随机播放”或“随机抽取”的核心函数。
+ * 这是实现"随机播放"或"随机抽取"的核心函数。
  */
 export const shuffle = <T>(items: T[]) => {
   const array = items.slice(); // 复制一份数组，以免修改原数组
@@ -306,7 +306,29 @@ export const resolvePlaylistId = async (
 };
 
 /**
- * 生成歌曲的唯一“指纹”
+ * 识别 URL 所属平台
+ * @param url 用户输入的链接
+ * @returns 平台标识：'netease' | 'soundcloud' | null
+ */
+export function identifyPlatform(url: string): "netease" | "soundcloud" | null {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+
+    if (host === "music.163.com" || host === "163cn.tv") {
+      return "netease";
+    }
+    if (host === "soundcloud.com" || host === "m.soundcloud.com" || host === "on.soundcloud.com") {
+      return "soundcloud";
+    }
+  } catch {
+    // Not a valid URL
+  }
+  return null;
+}
+
+/**
+ * 生成歌曲的唯一"指纹"
  * @param title 歌曲标题
  * @param artist 歌手名
  * @returns 标准化的签名字符串
