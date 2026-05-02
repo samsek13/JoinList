@@ -104,6 +104,55 @@ A: **不需要**。默认配置使用的是“内存模式 (Memory Mode)”，�
 
 ---
 
+## 辅助脚本
+
+脚本位于 `scripts/` 目录，使用 `npx tsx scripts/<name>.ts` 运行。
+
+### 列出所有用户
+
+```bash
+npx tsx scripts/list-users.ts
+```
+
+输出所有注册用户的账号名、审批状态和网易云绑定状态。
+
+### 截取歌单前 N 首
+
+```bash
+npx tsx scripts/slice-playlist.ts <用户名> <歌单链接或ID> <截取数量> [新歌单名称]
+```
+
+从指定网易云歌单中按顺序截取前 N 首歌，创建为新歌单。
+
+- `<用户名>`：JoinList 注册账号的用户名（脚本通过它从数据库读取你的网易云 Cookie）
+- `<歌单链接或ID>`：支持网易云长链接、短链接（`163cn.tv`）、APP 分享文本、纯数字 ID
+- `<截取数量>`：要截取的歌曲数量
+- `<新歌单名称>`：（可选）不填则自动命名为 `原歌单名 (前N首)`
+
+示例：
+
+```bash
+# 截取前 20 首
+npx tsx scripts/slice-playlist.ts myuser "https://music.163.com/playlist?id=123456" 20
+
+# 从 APP 分享文本中提取并截取前 10 首，自定义名称
+npx tsx scripts/slice-playlist.ts myuser "分享歌单xxx https://163cn.tv/abc" 10 "精简版"
+```
+
+前提：该用户已在应用中绑定网易云账号。
+
+### 管理员脚本
+
+```bash
+# 查看待审批用户
+npm run pending-users
+
+# 批准用户
+npm run approve-user
+```
+
+---
+
 ## 开发者文档
 如果你是开发人员，想了解详细的架构设计，请参阅：
 - [产品需求文档 (PRD)](prd_260217.md)
